@@ -413,17 +413,6 @@ class SolaryApp(tk.Frame):
         main_frame = tk.Frame(self.code_entry_view, bg="white", padx=self.padding*2, pady=self.padding*2)
         main_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         
-        # Titre adapté
-        title_label = tk.Label(
-            main_frame,
-            text="Code de déverrouillage" if self.is_small_screen else "Entrez votre code de déverrouillage",
-            font=("Helvetica", self.title_font_size, "bold"),
-            bg="white",
-            fg=self.primary_color,
-            wraplength=self.screen_width - 40
-        )
-        title_label.pack(pady=(0, self.padding))
-        
         # Sous-titre
         self.code_subtitle = tk.Label(
             main_frame,
@@ -451,21 +440,29 @@ class SolaryApp(tk.Frame):
         )
         self.code_display.pack()
         
-        # Clavier virtuel numérique
+        # Clavier virtuel numérique avec design amélioré
         keypad_frame = tk.Frame(main_frame, bg="white")
-        keypad_frame.pack(pady=self.padding)
+        keypad_frame.pack(pady=self.padding*2)
         
-        # Taille des boutons adaptée à l'écran (réduite pour meilleure visibilité)
+        # Taille des boutons adaptée à l'écran - TOUS IDENTIQUES
         if self.is_small_screen:
-            button_width = 3
-            button_height = 1
-            keypad_padx = 1
-            keypad_pady = 1
-        else:
             button_width = 4
             button_height = 2
             keypad_padx = 3
             keypad_pady = 3
+        else:
+            button_width = 5
+            button_height = 2
+            keypad_padx = 5
+            keypad_pady = 5
+        
+        # Couleurs améliorées pour le clavier
+        number_color = "#74b9ff"  # Bleu doux pour les chiffres
+        number_hover = "#0984e3"  # Bleu plus foncé au survol
+        delete_color = "#fd79a8"  # Rose pour effacer (plus doux que rouge)
+        delete_hover = "#e84393"
+        validate_color = "#00b894"  # Vert menthe
+        validate_hover = "#00a085"
         
         # Création des boutons numériques (disposition 3x3 + 0)
         self.keypad_buttons = []
@@ -477,86 +474,131 @@ class SolaryApp(tk.Frame):
             
             for col in range(3):
                 number = row * 3 + col + 1
+                
+                # Frame avec effet d'ombre simulé
+                button_container = tk.Frame(row_frame, bg="#e0e0e0", bd=0)
+                button_container.pack(side=tk.LEFT, padx=keypad_padx)
+                
                 btn = tk.Button(
-                    row_frame,
+                    button_container,
                     text=str(number),
                     font=("Helvetica", self.keypad_font_size, "bold"),
-                    bg=self.keypad_color,
+                    bg=number_color,
                     fg="white",
-                    activebackground=self.button_hover,
+                    activebackground=number_hover,
                     activeforeground="white",
                     bd=0,
                     width=button_width,
                     height=button_height,
                     cursor="hand2",
+                    relief=tk.FLAT,
                     command=lambda n=number: self.add_digit(str(n))
                 )
-                btn.pack(side=tk.LEFT, padx=keypad_padx)
+                btn.pack(padx=1, pady=1)  # Effet d'ombre
                 self.keypad_buttons.append(btn)
+                
+                # Effet hover simulé
+                def on_enter(event, btn=btn):
+                    btn.config(bg=number_hover)
+                def on_leave(event, btn=btn):
+                    btn.config(bg=number_color)
+                
+                btn.bind("<Enter>", on_enter)
+                btn.bind("<Leave>", on_leave)
         
-        # Ligne 4 (0 et boutons de contrôle)
+        # Ligne 4 (boutons spéciaux et 0)
         bottom_row = tk.Frame(keypad_frame, bg="white")
         bottom_row.pack(pady=keypad_pady)
         
-        # Bouton Effacer
+        # Bouton Effacer avec croix
+        delete_container = tk.Frame(bottom_row, bg="#e0e0e0", bd=0)
+        delete_container.pack(side=tk.LEFT, padx=keypad_padx)
+        
         clear_btn = tk.Button(
-            bottom_row,
-            text="⌫" if self.is_small_screen else "EFFACER",
-            font=("Helvetica", self.keypad_font_size, "bold"),
-            bg=self.error_color,
+            delete_container,
+            text="×",  # Croix Unicode
+            font=("Helvetica", self.keypad_font_size, "bold"),  # Même taille que les autres
+            bg=delete_color,
             fg="white",
-            activebackground="#b71c1c",
+            activebackground=delete_hover,
             activeforeground="white",
             bd=0,
             width=button_width,
             height=button_height,
             cursor="hand2",
+            relief=tk.FLAT,
             command=self.clear_digit
         )
-        clear_btn.pack(side=tk.LEFT, padx=keypad_padx)
+        clear_btn.pack(padx=1, pady=1)
+        
+        # Effet hover pour le bouton effacer
+        def on_enter_delete(event):
+            clear_btn.config(bg=delete_hover)
+        def on_leave_delete(event):
+            clear_btn.config(bg=delete_color)
+        
+        clear_btn.bind("<Enter>", on_enter_delete)
+        clear_btn.bind("<Leave>", on_leave_delete)
         
         # Bouton 0
+        zero_container = tk.Frame(bottom_row, bg="#e0e0e0", bd=0)
+        zero_container.pack(side=tk.LEFT, padx=keypad_padx)
+        
         zero_btn = tk.Button(
-            bottom_row,
+            zero_container,
             text="0",
             font=("Helvetica", self.keypad_font_size, "bold"),
-            bg=self.keypad_color,
+            bg=number_color,
             fg="white",
-            activebackground=self.button_hover,
+            activebackground=number_hover,
             activeforeground="white",
             bd=0,
             width=button_width,
             height=button_height,
             cursor="hand2",
+            relief=tk.FLAT,
             command=lambda: self.add_digit("0")
         )
-        zero_btn.pack(side=tk.LEFT, padx=keypad_padx)
+        zero_btn.pack(padx=1, pady=1)
         
-        # Bouton Valider
+        # Effet hover pour le bouton 0
+        def on_enter_zero(event):
+            zero_btn.config(bg=number_hover)
+        def on_leave_zero(event):
+            zero_btn.config(bg=number_color)
+        
+        zero_btn.bind("<Enter>", on_enter_zero)
+        zero_btn.bind("<Leave>", on_leave_zero)
+        
+        # Bouton Valider avec checkmark
+        validate_container = tk.Frame(bottom_row, bg="#e0e0e0", bd=0)
+        validate_container.pack(side=tk.LEFT, padx=keypad_padx)
+        
         validate_btn = tk.Button(
-            bottom_row,
-            text="✓" if self.is_small_screen else "OK",
-            font=("Helvetica", self.keypad_font_size, "bold"),
-            bg=self.success_color,
+            validate_container,
+            text="✓",  # Checkmark Unicode
+            font=("Helvetica", self.keypad_font_size, "bold"),  # Même taille que les autres
+            bg=validate_color,
             fg="white",
-            activebackground="#00695c",
+            activebackground=validate_hover,
             activeforeground="white",
             bd=0,
             width=button_width,
             height=button_height,
             cursor="hand2",
+            relief=tk.FLAT,
             command=self.validate_code
         )
-        validate_btn.pack(side=tk.LEFT, padx=keypad_padx)
+        validate_btn.pack(padx=1, pady=1)
         
-        # Message d'erreur
-        self.code_error = tk.Label(
-            main_frame,
-            text="Code incorrect",
-            font=("Helvetica", self.base_font_size),
-            bg="white",
-            fg=self.error_color
-        )
+        # Effet hover pour le bouton valider
+        def on_enter_validate(event):
+            validate_btn.config(bg=validate_hover)
+        def on_leave_validate(event):
+            validate_btn.config(bg=validate_color)
+        
+        validate_btn.bind("<Enter>", on_enter_validate)
+        validate_btn.bind("<Leave>", on_leave_validate)
         
         # Bouton Annuler
         cancel_frame = tk.Frame(main_frame, bg="white")
@@ -581,23 +623,31 @@ class SolaryApp(tk.Frame):
         if len(self.entered_code) < 6:  # Limite à 6 chiffres
             self.entered_code += digit
             self.update_code_display()
-            # Cacher le message d'erreur si affiché
-            self.code_error.pack_forget()
     
     def clear_digit(self):
         """Efface le dernier chiffre saisi"""
         if self.entered_code:
             self.entered_code = self.entered_code[:-1]
             self.update_code_display()
-            # Cacher le message d'erreur si affiché
-            self.code_error.pack_forget()
     
     def update_code_display(self):
-        """Met à jour l'affichage du code avec des étoiles"""
-        display_text = "●" * len(self.entered_code)  # Utiliser des points pour masquer le code
-        if not display_text:
-            display_text = "Tapez votre code" if self.is_small_screen else "Tapez votre code"
-        self.code_display.config(text=display_text)
+        """Met à jour l'affichage du code avec des points plus élégants"""
+        if self.entered_code:
+            # Utiliser des points plus élégants pour masquer le code
+            display_text = " ".join("●" * len(self.entered_code))
+            color = self.primary_color
+        else:
+            display_text = ""
+            color = "#a0a0a0"
+    
+        self.code_display.config(text=display_text, fg=color)
+
+    def show_error_in_display(self):
+        """Affiche discrètement l'erreur dans la zone de code"""
+        # Afficher "✗ ✗ ✗" en rouge pour indiquer l'erreur
+        self.code_display.config(text="✗ ✗ ✗", fg=self.error_color)
+        # Revenir à l'affichage normal après 1.5 secondes
+        self.after(1500, lambda: self.code_display.config(text="", fg="#a0a0a0"))
     
     def create_notification_view(self):
         """Crée la vue de notification adaptée"""
@@ -783,7 +833,6 @@ class SolaryApp(tk.Frame):
             self.code_entry_view.pack(fill=tk.BOTH, expand=True)
             self.entered_code = ""  # Réinitialiser le code
             self.update_code_display()
-            self.code_error.pack_forget()
         elif view_name == "notification":
             self.notification_view.pack(fill=tk.BOTH, expand=True)
             self.update_notification()
@@ -805,14 +854,24 @@ class SolaryApp(tk.Frame):
     
     def handle_locker_action(self, locker_id):
         """Gère l'action sur un casier"""
-        locker_status = self.locker_manager.get_locker_status(locker_id)
+        detailed_status = self.locker_manager.get_locker_detailed_status(locker_id)
         self.active_locker = locker_id
         
-        if locker_status:
+        if detailed_status == 'libre':
+            # Casier libre -> afficher QR code pour réserver
             self.show_view("qr_code")
-        else:
+        elif detailed_status in ['reserve', 'occupe']:
+            # Casier réservé ou occupé -> demander le code
             self.code_subtitle.config(text=f"Casier {locker_id + 1}")
             self.show_view("code_entry")
+        else:
+            # Fallback sur l'ancien comportement
+            locker_status = self.locker_manager.get_locker_status(locker_id)
+            if locker_status:
+                self.show_view("qr_code")
+            else:
+                self.code_subtitle.config(text=f"Casier {locker_id + 1}")
+                self.show_view("code_entry")
     
     def validate_code(self):
         """Valide le code entré via le clavier virtuel"""
@@ -827,9 +886,9 @@ class SolaryApp(tk.Frame):
             # Retour automatique après 4 secondes
             self.after(4000, lambda: self.show_view("main"))
         else:
-            self.code_error.pack(pady=(0, self.padding))
+            # Affichage discret de l'erreur
+            self.show_error_in_display()
             self.entered_code = ""  # Effacer le code incorrect
-            self.update_code_display()
     
     def update_notification(self):
         """Met à jour la notification"""
@@ -867,9 +926,26 @@ class SolaryApp(tk.Frame):
     def update_locker_display(self, locker_id):
         """Met à jour l'affichage d'un casier"""
         locker_status = self.locker_manager.get_locker_status(locker_id)
-        color = self.available_color if locker_status else self.occupied_color
-        status_text = "DISPONIBLE" if locker_status else "OCCUPÉ"
-        button_text = "RÉSERVER" if locker_status else "OUVRIR"
+        detailed_status = self.locker_manager.get_locker_detailed_status(locker_id)
+        
+        # Déterminer l'affichage selon le statut détaillé
+        if detailed_status == 'libre':
+            color = self.available_color
+            status_text = "LIBRE"
+            button_text = "RÉSERVER"
+        elif detailed_status == 'reserve':
+            color = self.occupied_color
+            status_text = "RÉSERVÉ"
+            button_text = "OUVRIR"
+        elif detailed_status == 'occupe':
+            color = self.occupied_color
+            status_text = "OCCUPÉ"
+            button_text = "LIBÉRER"
+        else:
+            # Fallback sur l'ancien système
+            color = self.available_color if locker_status else self.occupied_color
+            status_text = "DISPONIBLE" if locker_status else "OCCUPÉ"
+            button_text = "RÉSERVER" if locker_status else "OUVRIR"
         
         print(f"🔄 Mise à jour casier {locker_id + 1}: {status_text}")
         

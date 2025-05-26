@@ -5,11 +5,11 @@ import threading
 
 class LockerManager:
     def __init__(self, mqtt_manager=None, api_manager=None):
-        # État local des casiers pour l'affichage (True = libre, False = réservé)
+        # État local des casiers pour l'affichage (True = libre, False = réservé/occupé)
         self.lockers_display = [False, True]  # Valeurs par défaut
         
-        # Codes de déverrouillage
-        self.unlock_codes = {
+        # Codes de déverrouillage (fallback, maintenant récupérés via API)
+        self.fallback_codes = {
             0: "1234",  # Casier 1
             1: "5678"   # Casier 2
         }
@@ -26,7 +26,7 @@ class LockerManager:
         # Callbacks pour mise à jour de l'interface
         self.on_status_change_callback = None
         
-        print("🎭 LockerManager initialisé")
+        print("🎭 LockerManager v2.0 initialisé avec nouvelle logique")
         
         # Synchroniser avec l'API au démarrage
         if self.api_manager:
@@ -37,13 +37,19 @@ class LockerManager:
         self.on_status_change_callback = callback
     
     def get_locker_status(self, locker_id):
-        """Retourne l'état d'affichage d'un casier (True = libre, False = réservé)"""
+        """Retourne l'état d'affichage d'un casier (True = libre, False = réservé/occupé)"""
         if 0 <= locker_id < len(self.lockers_display):
             return self.lockers_display[locker_id]
         return False
     
+    def get_locker_detailed_status(self, locker_id):
+        """Retourne le statut détaillé d'un casier (libre/réservé/occupé)"""
+        if self.api_manager:
+            return self.api_manager.get_casier_status(locker_id)
+        return 'libre'
+    
     def reserve_locker(self, locker_id):
-        """Réserve un casier (le marque comme occupé)"""
+        """Réserve un casier (le marque comme réservé)"""
         if 0 <= locker_id < len(self.lockers_display) and self.lockers_display[locker_id]:
             # Mettre à jour localement
             self.lockers_display[locker_id] = False
@@ -65,7 +71,7 @@ class LockerManager:
         return False
     
     def release_locker(self, locker_id):
-        """Libère un casier (le marque comme disponible)"""
+        """Libère un casier (le marque comme libre)"""
         if 0 <= locker_id < len(self.lockers_display):
             # Mettre à jour localement
             self.lockers_display[locker_id] = True
@@ -84,30 +90,76 @@ class LockerManager:
             return True
         return False
     
+    def occupy_locker(self, locker_id):
+        """Marque un casier comme occupé (transition réservé -> occupé)"""
+        if 0 <= locker_id < len(self.lockers_display):
+            print(f"🏠 Casier {locker_id + 1} marqué comme occupé")
+            
+            # Mettre à jour via l'API
+            if self.api_manager:
+                success = self.api_manager.occupy_locker(locker_id)
+                if success:
+                    print(f"✅ Occupation API confirmée pour casier {locker_id + 1}")
+                    return True
+                else:
+                    print(f"⚠️ Échec occupation API pour casier {locker_id + 1}")
+                    return False
+            
+            return True
+        return False
+    
     def verify_code(self, locker_id, code):
         """Vérifie le code et déclenche l'ouverture physique si correct"""
         if 0 <= locker_id < len(self.lockers_display):
-            is_valid = self.unlock_codes.get(locker_id) == code
+            # Vérifier le statut détaillé du casier
+            detailed_status = self.get_locker_detailed_status(locker_id)
+            
+            if detailed_status == 'reserve':
+                # Casier réservé : vérifier le code via l'API
+                if self.api_manager:
+                    is_valid = self.api_manager.verify_user_code(locker_id, code)
+                else:
+                    # Fallback sur les codes locaux
+                    is_valid = self.fallback_codes.get(locker_id) == code
+                    print(f"⚠️ Utilisation du code fallback pour casier {locker_id + 1}")
+            elif detailed_status == 'occupe':
+                # Casier occupé : utiliser les codes fallback ou API si disponible
+                if self.api_manager:
+                    is_valid = self.api_manager.verify_user_code(locker_id, code)
+                    if not is_valid:
+                        # Essayer aussi le code fallback pour la libération
+                        is_valid = self.fallback_codes.get(locker_id) == code
+                else:
+                    is_valid = self.fallback_codes.get(locker_id) == code
+            else:
+                # Casier libre : ne devrait pas arriver
+                print(f"⚠️ Tentative d'ouverture d'un casier libre {locker_id + 1}")
+                return False
             
             if is_valid:
                 print(f"✅ Code correct pour casier {locker_id + 1}")
                 
                 # Logger l'action
                 if self.api_manager:
-                    self.api_manager.log_action(locker_id, "unlock", {"code_used": True})
+                    self.api_manager.log_action(locker_id, "unlock", {"code_used": True, "status": detailed_status})
                 
                 # Déclencher l'ouverture physique
                 self.trigger_physical_opening(locker_id)
                 
-                # Libérer le casier (il devient disponible)
-                self.release_locker(locker_id)
+                # Gérer la transition d'état selon le statut actuel
+                if detailed_status == 'reserve':
+                    # Réservé -> Occupé
+                    self.occupy_locker(locker_id)
+                elif detailed_status == 'occupe':
+                    # Occupé -> Libre (libération)
+                    self.release_locker(locker_id)
                 
             else:
                 print(f"❌ Code incorrect pour casier {locker_id + 1}")
                 
                 # Logger la tentative échouée
                 if self.api_manager:
-                    self.api_manager.log_action(locker_id, "unlock_failed", {"code_used": False})
+                    self.api_manager.log_action(locker_id, "unlock_failed", {"code_used": False, "status": detailed_status})
             
             return is_valid
         return False
@@ -118,10 +170,10 @@ class LockerManager:
         pass
     
     def set_unlock_code(self, locker_id, code):
-        """Définit le code de déverrouillage d'un casier"""
+        """Définit le code de déverrouillage d'un casier (fallback)"""
         if 0 <= locker_id < len(self.lockers_display):
-            self.unlock_codes[locker_id] = code
-            print(f"🔑 Code modifié pour casier {locker_id + 1}: {code}")
+            self.fallback_codes[locker_id] = code
+            print(f"🔑 Code fallback modifié pour casier {locker_id + 1}: {code}")
             return True
         return False
     
@@ -130,7 +182,7 @@ class LockerManager:
         try:
             state = {
                 "lockers_display": self.lockers_display,
-                "unlock_codes": self.unlock_codes,
+                "fallback_codes": self.fallback_codes,
                 "last_update": time.time()
             }
             
@@ -151,11 +203,11 @@ class LockerManager:
                     state = json.load(f)
                 
                 self.lockers_display = state.get("lockers_display", [False, True])
-                self.unlock_codes = state.get("unlock_codes", {0: "1234", 1: "5678"})
+                self.fallback_codes = state.get("fallback_codes", {0: "1234", 1: "5678"})
                 
                 # Convertir les clés string en int si nécessaire
-                if isinstance(list(self.unlock_codes.keys())[0], str):
-                    self.unlock_codes = {int(k): v for k, v in self.unlock_codes.items()}
+                if isinstance(list(self.fallback_codes.keys())[0], str):
+                    self.fallback_codes = {int(k): v for k, v in self.fallback_codes.items()}
                 
                 print("État des casiers chargé depuis le fichier")
                 
@@ -163,7 +215,7 @@ class LockerManager:
             print(f"Erreur chargement état: {e}")
             # Utiliser les valeurs par défaut
             self.lockers_display = [False, True]
-            self.unlock_codes = {0: "1234", 1: "5678"}
+            self.fallback_codes = {0: "1234", 1: "5678"}
 
     def trigger_physical_opening(self, locker_id):
         """Déclenche l'ouverture physique du casier avec timer de 20 secondes"""
@@ -240,7 +292,7 @@ class LockerManager:
         if 0 <= locker_id < len(self.lockers_display):
             self.lockers_display[locker_id] = status
             self._notify_status_change()
-            print(f"🔄 API: Casier {locker_id + 1} -> {'LIBRE' if status else 'RÉSERVÉ'}")
+            print(f"🔄 API: Casier {locker_id + 1} -> {'LIBRE' if status else 'RÉSERVÉ/OCCUPÉ'}")
     
     def force_sync(self):
         """Force une synchronisation immédiate avec l'API"""

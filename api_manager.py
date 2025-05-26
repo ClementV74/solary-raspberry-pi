@@ -1,5 +1,5 @@
 """
-Gestionnaire API pour la communication avec le backend Solary
+Gestionnaire API pour la communication avec le backend Solary - Nouvelle version
 """
 
 import requests
@@ -18,7 +18,7 @@ class APIManager:
         # Headers par défaut
         self.headers = {
             "Content-Type": "application/json",
-            "User-Agent": "Solary-Borne/1.0"
+            "User-Agent": "Solary-Borne/2.0"
         }
         
         if self.api_key:
@@ -36,9 +36,9 @@ class APIManager:
         self.sync_running = False
         
         # Cache des données API
-        self.prises_data = []
+        self.casiers_data = []
         
-        print("🔗 APIManager initialisé avec API Solary")
+        print("🔗 APIManager v2.0 initialisé avec nouvelles API Solary")
         print(f"   Base URL: {self.base_url}")
         print(f"   Borne ID: {self.borne_id}")
     
@@ -72,9 +72,9 @@ class APIManager:
                 time.sleep(interval)
     
     def get_lockers_status(self):
-        """Récupère l'état des casiers depuis l'API Solary"""
+        """Récupère l'état des casiers depuis la nouvelle API Solary"""
         try:
-            url = f"{self.base_url}/GetAllPrises"
+            url = f"{self.base_url}/GetAllCasiers"
             print(f"🔄 Appel API: {url}")
             
             response = requests.get(url, headers=self.headers, timeout=10)
@@ -83,22 +83,24 @@ class APIManager:
                 data = response.json()
                 print(f"✅ Données API reçues: {data}")
                 
-                # Filtrer les prises de cette borne
-                borne_prises = [prise for prise in data if prise.get('borne_id') == self.borne_id]
+                # Filtrer les casiers de cette borne
+                borne_casiers = [casier for casier in data if casier.get('borne_id') == self.borne_id]
                 
-                # Trier par prise_id pour avoir l'ordre correct
-                borne_prises.sort(key=lambda x: x.get('prise_id', 0))
+                # Trier par casier_id pour avoir l'ordre correct
+                borne_casiers.sort(key=lambda x: x.get('casier_id', 0))
                 
                 # Sauvegarder les données complètes
-                self.prises_data = borne_prises
+                self.casiers_data = borne_casiers
                 
-                # Convertir en format attendu par le système (True = disponible, False = occupé)
+                # Convertir en format attendu par le système
+                # libre = True (disponible), réservé/occupé = False (non disponible)
                 status_list = []
-                for prise in borne_prises:
-                    is_available = bool(prise.get('is_available', 0))
+                for casier in borne_casiers:
+                    status = casier.get('status', 'libre').lower()
+                    is_available = (status == 'libre')
                     status_list.append(is_available)
                 
-                print(f"📊 Statuts casiers: {status_list}")
+                print(f"📊 Statuts casiers: {[self._get_status_text(s) for s in borne_casiers]}")
                 self.connected = True
                 self.last_sync = datetime.now()
                 
@@ -117,39 +119,82 @@ class APIManager:
             self.connected = False
             return None
     
-    def update_prise_status(self, locker_id, is_available):
-        """Met à jour le statut d'une prise via l'API"""
+    def _get_status_text(self, casier):
+        """Retourne le texte du statut pour le debug"""
+        status = casier.get('status', 'libre').lower()
+        return f"Casier {casier.get('casier_id', '?')}: {status}"
+    
+    def get_casier_status(self, locker_id):
+        """Récupère le statut détaillé d'un casier spécifique"""
+        if locker_id < len(self.casiers_data):
+            return self.casiers_data[locker_id].get('status', 'libre').lower()
+        return 'libre'
+    
+    def get_casier_user_id(self, locker_id):
+        """Récupère l'user_id associé à un casier"""
+        if locker_id < len(self.casiers_data):
+            return self.casiers_data[locker_id].get('user_id')
+        return None
+    
+    def get_user_code(self, user_id):
+        """Récupère le code d'un utilisateur via l'API GetUser"""
         try:
-            # Trouver la prise correspondante
-            if locker_id < len(self.prises_data):
-                prise = self.prises_data[locker_id]
-                prise_id = prise.get('prise_id')
+            url = f"{self.base_url}/GetUser/{user_id}"
+            print(f"🔄 Récupération code utilisateur: {url}")
+            
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                code = user_data.get('code_casiers')
+                print(f"✅ Code utilisateur {user_id} récupéré")
+                return str(code) if code is not None else None
+            else:
+                print(f"❌ Erreur récupération utilisateur: {response.status_code}")
+                return None
                 
-                if not prise_id:
-                    print(f"❌ Prise ID non trouvé pour casier {locker_id}")
+        except Exception as e:
+            print(f"❌ Erreur récupération code utilisateur: {e}")
+            return None
+    
+    def update_casier_status(self, locker_id, new_status):
+        """Met à jour le statut d'un casier via l'API"""
+        try:
+            # Trouver le casier correspondant
+            if locker_id < len(self.casiers_data):
+                casier = self.casiers_data[locker_id]
+                casier_id = casier.get('casier_id')
+                
+                if not casier_id:
+                    print(f"❌ Casier ID non trouvé pour casier {locker_id}")
                     return False
                 
-                url = f"{self.base_url}/UpdatePrise/{prise_id}"
+                # URL pour la mise à jour
+                url = f"{self.base_url}/UpdateCasier/{casier_id}"
                 
+                # L'API attend TOUS les champs obligatoires
                 payload = {
-                    "id": prise_id,
-                    "borne_id": self.borne_id,
-                    "is_available": 1 if is_available else 0
+                    "borne_id": casier.get('borne_id', self.borne_id),
+                    "user_id": casier.get('user_id'),
+                    "status": new_status,
+                    "date_reservation": casier.get('date_reservation'),
+                    "date_occupation": casier.get('date_occupation')
                 }
                 
-                print(f"🔄 Mise à jour prise {prise_id}: {payload}")
+                print(f"🔄 Mise à jour casier {casier_id}: {new_status}")
+                print(f"📤 Payload: {payload}")
                 
                 response = requests.put(url, json=payload, headers=self.headers, timeout=10)
                 
                 if response.status_code in [200, 204]:
-                    print(f"✅ Prise {prise_id} mise à jour avec succès")
+                    print(f"✅ Casier {casier_id} mis à jour avec succès")
                     
                     # Mettre à jour le cache local
-                    self.prises_data[locker_id]['is_available'] = 1 if is_available else 0
+                    self.casiers_data[locker_id]['status'] = new_status
                     
                     return True
                 else:
-                    print(f"❌ Erreur mise à jour prise: {response.status_code} - {response.text}")
+                    print(f"❌ Erreur mise à jour casier: {response.status_code} - {response.text}")
                     return False
             else:
                 print(f"❌ Casier {locker_id} non trouvé dans les données")
@@ -159,23 +204,52 @@ class APIManager:
             print(f"❌ Erreur réseau mise à jour: {e}")
             return False
         except Exception as e:
-            print(f"❌ Erreur mise à jour prise: {e}")
+            print(f"❌ Erreur mise à jour casier: {e}")
             return False
     
     def reserve_locker(self, locker_id, user_data=None):
-        """Réserve un casier (le marque comme occupé)"""
+        """Réserve un casier (le marque comme réservé)"""
         print(f"🔗 API: Réservation casier {locker_id + 1}")
-        return self.update_prise_status(locker_id, False)  # False = occupé
+        return self.update_casier_status(locker_id, "reserve")
+    
+    def occupy_locker(self, locker_id):
+        """Marque un casier comme occupé"""
+        print(f"🔗 API: Occupation casier {locker_id + 1}")
+        return self.update_casier_status(locker_id, "occupe")
     
     def release_locker(self, locker_id, unlock_code=None):
-        """Libère un casier (le marque comme disponible)"""
+        """Libère un casier (le marque comme libre)"""
         print(f"🔗 API: Libération casier {locker_id + 1}")
-        return self.update_prise_status(locker_id, True)  # True = disponible
+        return self.update_casier_status(locker_id, "libre")
+    
+    def verify_user_code(self, locker_id, entered_code):
+        """Vérifie le code d'un utilisateur pour un casier réservé"""
+        try:
+            # Récupérer l'user_id du casier
+            user_id = self.get_casier_user_id(locker_id)
+            if not user_id:
+                print(f"❌ Aucun utilisateur associé au casier {locker_id + 1}")
+                return False
+            
+            # Récupérer le code de l'utilisateur
+            expected_code = self.get_user_code(user_id)
+            if not expected_code:
+                print(f"❌ Impossible de récupérer le code pour l'utilisateur {user_id}")
+                return False
+            
+            # Comparer les codes
+            is_valid = str(entered_code) == str(expected_code)
+            print(f"🔐 Vérification code casier {locker_id + 1}: {'✅ Valide' if is_valid else '❌ Invalide'}")
+            
+            return is_valid
+            
+        except Exception as e:
+            print(f"❌ Erreur vérification code: {e}")
+            return False
     
     def send_heartbeat(self):
         """Envoie un heartbeat à l'API"""
         try:
-            # Pour l'instant, utiliser GetAllPrises comme heartbeat
             result = self.get_lockers_status()
             self.connected = result is not None
             return self.connected
@@ -198,22 +272,22 @@ class APIManager:
             print(f"❌ Erreur synchronisation: {e}")
             return False
     
-    def get_prise_info(self, locker_id):
-        """Récupère les informations d'une prise"""
-        if locker_id < len(self.prises_data):
-            return self.prises_data[locker_id]
+    def get_casier_info(self, locker_id):
+        """Récupère les informations d'un casier"""
+        if locker_id < len(self.casiers_data):
+            return self.casiers_data[locker_id]
         return None
     
     def log_action(self, locker_id, action, details=None):
         """Enregistre une action (pour l'instant juste un log local)"""
         try:
-            prise_info = self.get_prise_info(locker_id)
-            prise_id = prise_info.get('prise_id') if prise_info else 'unknown'
+            casier_info = self.get_casier_info(locker_id)
+            casier_id = casier_info.get('casier_id') if casier_info else 'unknown'
             
             log_entry = {
                 "timestamp": datetime.now().isoformat(),
                 "borne_id": self.borne_id,
-                "prise_id": prise_id,
+                "casier_id": casier_id,
                 "locker_id": locker_id,
                 "action": action,
                 "details": details
