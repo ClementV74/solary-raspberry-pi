@@ -1,9 +1,4 @@
-"""
-Gestionnaire API pour la communication avec le backend Solary - Nouvelle version
-"""
-
 import requests
-import json
 import threading
 import time
 from datetime import datetime
@@ -28,7 +23,7 @@ class APIManager:
         self.connected = False
         self.last_sync = None
         
-        # Callbacks
+        # Callback
         self.on_status_change_callback = None
         
         # Thread de synchronisation
@@ -38,7 +33,7 @@ class APIManager:
         # Cache des données API
         self.casiers_data = []
         
-        print("🔗 APIManager v2.0 initialisé avec nouvelles API Solary")
+        print("🔗 APIManager initialisé")
         print(f"   Base URL: {self.base_url}")
         print(f"   Borne ID: {self.borne_id}")
     
@@ -72,7 +67,7 @@ class APIManager:
                 time.sleep(interval)
     
     def get_lockers_status(self):
-        """Récupère l'état des casiers depuis la nouvelle API Solary"""
+        """Récupère l'état des casiers depuis l'API Solary"""
         try:
             url = f"{self.base_url}/GetAllCasiers"
             print(f"🔄 Appel API: {url}")
@@ -247,18 +242,6 @@ class APIManager:
             print(f"❌ Erreur vérification code: {e}")
             return False
     
-    def send_heartbeat(self):
-        """Envoie un heartbeat à l'API"""
-        try:
-            result = self.get_lockers_status()
-            self.connected = result is not None
-            return self.connected
-            
-        except Exception as e:
-            print(f"❌ Erreur heartbeat API: {e}")
-            self.connected = False
-            return False
-    
     def sync_lockers_status(self):
         """Synchronise l'état des casiers"""
         try:
@@ -279,7 +262,7 @@ class APIManager:
         return None
     
     def log_action(self, locker_id, action, details=None):
-        """Enregistre une action (pour l'instant juste un log local)"""
+        """Enregistre une action (log local)"""
         try:
             casier_info = self.get_casier_info(locker_id)
             casier_id = casier_info.get('casier_id') if casier_info else 'unknown'
@@ -303,14 +286,6 @@ class APIManager:
     def is_connected(self):
         """Retourne l'état de connexion API"""
         return self.connected
-    
-    def get_last_sync(self):
-        """Retourne la dernière synchronisation"""
-        return self.last_sync
-    
-    def get_borne_id(self):
-        """Retourne l'ID de la borne"""
-        return self.borne_id
     
     def test_connection(self):
         """Test la connexion à l'API"""

@@ -4,6 +4,8 @@ import subprocess
 import importlib.util
 import os
 import platform
+import requests
+import paho.mqtt.client
 
 def check_python_version():
     """Vérifie que Python 3.x est utilisé"""
@@ -156,7 +158,7 @@ StartupNotify=false
 
 def main():
     """Fonction principale"""
-    print("🔍 Configuration Solary pour Raspberry Pi 3.5\"...")
+    print("🔍 Configuration Solary pour Raspberry Pi 4\"...")
     
     check_python_version()
     setup_raspberry_pi()
