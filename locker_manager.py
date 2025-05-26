@@ -8,8 +8,8 @@ class LockerManager:
         
         # Codes de déverrouillage fallback
         self.fallback_codes = {
-            0: "1234",  # Casier 1
-            1: "5678"   # Casier 2
+            0: "9785578678",  # Casier 1
+            1: "9785578678"   # Casier 2
         }
         
         # Gestionnaires
