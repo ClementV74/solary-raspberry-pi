@@ -5,8 +5,8 @@ import threading
 
 class LockerManager:
     def __init__(self, mqtt_manager=None, api_manager=None):
-        # État mock des casiers pour l'affichage (True = libre, False = réservé)
-        self.lockers_display = [False, True]  # Casier 1 réservé, Casier 2 libre (mock)
+        # État local des casiers pour l'affichage (True = libre, False = réservé)
+        self.lockers_display = [False, True]  # Valeurs par défaut
         
         # Codes de déverrouillage
         self.unlock_codes = {
@@ -17,7 +17,7 @@ class LockerManager:
         # Gestionnaire MQTT pour contrôle physique
         self.mqtt_manager = mqtt_manager
         
-        # Gestionnaire API pour la logique métier (futur)
+        # Gestionnaire API pour la logique métier
         self.api_manager = api_manager
         
         # Timers pour auto-fermeture
@@ -26,9 +26,11 @@ class LockerManager:
         # Callbacks pour mise à jour de l'interface
         self.on_status_change_callback = None
         
-        print("🎭 LockerManager initialisé avec données mock")
-        print(f"   Casier 1: {'LIBRE' if self.lockers_display[0] else 'RÉSERVÉ'}")
-        print(f"   Casier 2: {'LIBRE' if self.lockers_display[1] else 'RÉSERVÉ'}")
+        print("🎭 LockerManager initialisé")
+        
+        # Synchroniser avec l'API au démarrage
+        if self.api_manager:
+            self.sync_with_api()
     
     def set_status_change_callback(self, callback):
         """Définit le callback pour les changements d'état"""
@@ -41,19 +43,43 @@ class LockerManager:
         return False
     
     def reserve_locker(self, locker_id):
-        """Réserve un casier (le marque comme occupé) - Mock pour l'instant"""
+        """Réserve un casier (le marque comme occupé)"""
         if 0 <= locker_id < len(self.lockers_display) and self.lockers_display[locker_id]:
+            # Mettre à jour localement
             self.lockers_display[locker_id] = False
-            print(f"🎭 Mock: Casier {locker_id + 1} réservé")
+            print(f"🔒 Casier {locker_id + 1} réservé localement")
+            
+            # Mettre à jour via l'API
+            if self.api_manager:
+                success = self.api_manager.reserve_locker(locker_id)
+                if success:
+                    print(f"✅ Réservation API confirmée pour casier {locker_id + 1}")
+                else:
+                    print(f"⚠️ Échec réservation API pour casier {locker_id + 1}")
+                    # Revenir en arrière si l'API échoue
+                    self.lockers_display[locker_id] = True
+                    return False
+            
             self._notify_status_change()
             return True
         return False
     
     def release_locker(self, locker_id):
-        """Libère un casier (le marque comme disponible) - Mock pour l'instant"""
+        """Libère un casier (le marque comme disponible)"""
         if 0 <= locker_id < len(self.lockers_display):
+            # Mettre à jour localement
             self.lockers_display[locker_id] = True
-            print(f"🎭 Mock: Casier {locker_id + 1} libéré")
+            print(f"🔓 Casier {locker_id + 1} libéré localement")
+            
+            # Mettre à jour via l'API
+            if self.api_manager:
+                success = self.api_manager.release_locker(locker_id)
+                if success:
+                    print(f"✅ Libération API confirmée pour casier {locker_id + 1}")
+                else:
+                    print(f"⚠️ Échec libération API pour casier {locker_id + 1}")
+                    # Ne pas revenir en arrière pour la libération (sécurité)
+            
             self._notify_status_change()
             return True
         return False
@@ -66,18 +92,22 @@ class LockerManager:
             if is_valid:
                 print(f"✅ Code correct pour casier {locker_id + 1}")
                 
+                # Logger l'action
+                if self.api_manager:
+                    self.api_manager.log_action(locker_id, "unlock", {"code_used": True})
+                
                 # Déclencher l'ouverture physique
                 self.trigger_physical_opening(locker_id)
                 
-                # Libérer le casier en mock (il devient disponible)
+                # Libérer le casier (il devient disponible)
                 self.release_locker(locker_id)
-                
-                # TODO: Appeler l'API pour marquer le casier comme libéré
-                if self.api_manager:
-                    self.api_manager.release_locker(locker_id)
                 
             else:
                 print(f"❌ Code incorrect pour casier {locker_id + 1}")
+                
+                # Logger la tentative échouée
+                if self.api_manager:
+                    self.api_manager.log_action(locker_id, "unlock_failed", {"code_used": False})
             
             return is_valid
         return False
@@ -161,10 +191,13 @@ class LockerManager:
     def toggle_mock_status(self, locker_id):
         """Bascule l'état mock d'un casier (pour tests)"""
         if 0 <= locker_id < len(self.lockers_display):
-            self.lockers_display[locker_id] = not self.lockers_display[locker_id]
-            status = "LIBRE" if self.lockers_display[locker_id] else "RÉSERVÉ"
-            print(f"🎭 Mock casier {locker_id + 1} -> {status}")
-            self._notify_status_change()
+            new_status = not self.lockers_display[locker_id]
+            
+            if new_status:
+                self.release_locker(locker_id)
+            else:
+                self.reserve_locker(locker_id)
+            
             return True
         return False
     
@@ -181,23 +214,34 @@ class LockerManager:
         self.timers.clear()
         print("🧹 Timers nettoyés")
 
-    # Méthodes pour future intégration API
+    # Méthodes pour intégration API
     def sync_with_api(self):
-        """Synchronise l'état avec l'API (futur)"""
+        """Synchronise l'état avec l'API"""
         if self.api_manager:
             try:
-                # TODO: Récupérer l'état depuis l'API
+                print("🔄 Synchronisation avec l'API...")
                 api_status = self.api_manager.get_lockers_status()
                 if api_status:
+                    # Mettre à jour l'état local avec les données de l'API
                     self.lockers_display = api_status
                     self._notify_status_change()
-                    print("🔄 État synchronisé avec l'API")
+                    print(f"✅ État synchronisé avec l'API: {api_status}")
+                    return True
+                else:
+                    print("⚠️ Pas de données API, conservation de l'état local")
+                    return False
             except Exception as e:
                 print(f"❌ Erreur synchronisation API: {e}")
+                return False
+        return False
     
     def update_from_api(self, locker_id, status):
-        """Met à jour l'état d'un casier depuis l'API (futur)"""
+        """Met à jour l'état d'un casier depuis l'API"""
         if 0 <= locker_id < len(self.lockers_display):
             self.lockers_display[locker_id] = status
             self._notify_status_change()
             print(f"🔄 API: Casier {locker_id + 1} -> {'LIBRE' if status else 'RÉSERVÉ'}")
+    
+    def force_sync(self):
+        """Force une synchronisation immédiate avec l'API"""
+        return self.sync_with_api()

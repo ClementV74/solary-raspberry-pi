@@ -40,7 +40,7 @@ class SolaryApp(tk.Frame):
             self.title_font_size = 12
             self.header_font_size = 14
             self.button_font_size = 10
-            self.keypad_font_size = 16  # Plus gros pour le clavier tactile
+            self.keypad_font_size = 12  # Taille réduite pour le clavier tactile
             self.padding = 5
             self.button_padding_x = 15
             self.button_padding_y = 8
@@ -49,7 +49,7 @@ class SolaryApp(tk.Frame):
             self.title_font_size = int(18 * self.scale_factor)
             self.header_font_size = int(24 * self.scale_factor)
             self.button_font_size = int(14 * self.scale_factor)
-            self.keypad_font_size = int(20 * self.scale_factor)
+            self.keypad_font_size = int(16 * self.scale_factor)
             self.padding = int(10 * self.scale_factor)
             self.button_padding_x = int(20 * self.scale_factor)
             self.button_padding_y = int(10 * self.scale_factor)
@@ -81,8 +81,22 @@ class SolaryApp(tk.Frame):
         self.create_widgets()
         self.update_clock()
         
-        # Démarrer la synchronisation API (préparé pour le futur)
-        # self.api_manager.start_sync(30)  # Décommenter quand l'API sera prête
+        # Démarrer la synchronisation API automatique
+        self.start_api_sync()
+        
+    def start_api_sync(self):
+        """Démarre la synchronisation automatique avec l'API"""
+        if self.api_manager:
+            # Test de connexion initial
+            print("🔄 Test de connexion API initial...")
+            self.api_manager.test_connection()
+            
+            # Synchronisation immédiate
+            self.locker_manager.sync_with_api()
+            
+            # Démarrer la synchronisation périodique (toutes les 15 secondes)
+            self.api_manager.start_sync(15)
+            print("✅ Synchronisation API automatique activée")
         
     def load_qr_code_url(self):
         """Charge l'URL du QR code depuis le fichier de configuration"""
@@ -96,14 +110,18 @@ class SolaryApp(tk.Frame):
     
     def on_locker_status_change(self):
         """Callback appelé quand l'état des casiers change"""
+        print("🔄 Mise à jour interface suite changement statut casiers")
         if self.current_view == "main":
             self.after(100, self.update_locker_displays)
     
     def on_api_status_change(self, status_list):
         """Callback appelé quand l'API met à jour les statuts"""
         print(f"🔄 Mise à jour depuis API: {status_list}")
-        if self.current_view == "main":
-            self.after(100, self.update_locker_displays)
+        # Mettre à jour le locker manager avec les nouvelles données
+        if status_list and len(status_list) >= 2:
+            self.locker_manager.lockers_display = status_list
+            if self.current_view == "main":
+                self.after(100, self.update_locker_displays)
         
     def create_widgets(self):
         # En-tête adapté pour petit écran
@@ -255,6 +273,7 @@ class SolaryApp(tk.Frame):
         # Création des casiers avec layout adaptatif
         self.locker_frames = []
         self.locker_status_labels = []
+        self.locker_status_texts = []  # Ajouter référence aux textes de statut
         self.locker_buttons = []
         
         # Layout: vertical pour petit écran, horizontal pour grand écran
@@ -328,6 +347,7 @@ class SolaryApp(tk.Frame):
                     fg=color
                 )
                 status_text.pack(side=tk.LEFT)
+                self.locker_status_texts.append(status_text)
             else:
                 # Indicateur normal pour grand écran
                 status_frame = tk.Frame(info_frame, bg="white")
@@ -353,6 +373,7 @@ class SolaryApp(tk.Frame):
                     fg=color
                 )
                 status_text.pack()
+                self.locker_status_texts.append(status_text)
             
             self.locker_status_labels.append(status_indicator)
             
@@ -434,17 +455,17 @@ class SolaryApp(tk.Frame):
         keypad_frame = tk.Frame(main_frame, bg="white")
         keypad_frame.pack(pady=self.padding)
         
-        # Taille des boutons adaptée à l'écran
+        # Taille des boutons adaptée à l'écran (réduite pour meilleure visibilité)
         if self.is_small_screen:
+            button_width = 3
+            button_height = 1
+            keypad_padx = 1
+            keypad_pady = 1
+        else:
             button_width = 4
             button_height = 2
-            keypad_padx = 2
-            keypad_pady = 2
-        else:
-            button_width = 6
-            button_height = 3
-            keypad_padx = 5
-            keypad_pady = 5
+            keypad_padx = 3
+            keypad_pady = 3
         
         # Création des boutons numériques (disposition 3x3 + 0)
         self.keypad_buttons = []
@@ -839,6 +860,7 @@ class SolaryApp(tk.Frame):
     
     def update_locker_displays(self):
         """Met à jour l'affichage des casiers"""
+        print("🔄 Mise à jour affichage de tous les casiers")
         for locker_id in range(2):
             self.update_locker_display(locker_id)
     
@@ -846,8 +868,12 @@ class SolaryApp(tk.Frame):
         """Met à jour l'affichage d'un casier"""
         locker_status = self.locker_manager.get_locker_status(locker_id)
         color = self.available_color if locker_status else self.occupied_color
+        status_text = "DISPONIBLE" if locker_status else "OCCUPÉ"
+        button_text = "RÉSERVER" if locker_status else "OUVRIR"
         
-        # Mettre à jour l'indicateur
+        print(f"🔄 Mise à jour casier {locker_id + 1}: {status_text}")
+        
+        # Mettre à jour l'indicateur coloré
         canvas = self.locker_status_labels[locker_id]
         canvas.delete("all")
         
@@ -857,10 +883,15 @@ class SolaryApp(tk.Frame):
             canvas.create_oval(5, 5, 55, 55, fill=color, outline="")
             canvas.create_oval(15, 15, 35, 35, fill="#ffffff", outline="")
         
+        # Mettre à jour le texte de statut
+        if locker_id < len(self.locker_status_texts):
+            self.locker_status_texts[locker_id].config(
+                text=status_text,
+                fg=color
+            )
+        
         # Mettre à jour le bouton
-        self.locker_buttons[locker_id].config(
-            text="RÉSERVER" if locker_status else "OUVRIR"
-        )
+        self.locker_buttons[locker_id].config(text=button_text)
     
     def update_connection_status(self):
         """Met à jour les indicateurs de statut de connexion"""
@@ -881,8 +912,8 @@ class SolaryApp(tk.Frame):
                 # Vert si connecté
                 self.api_indicator.create_oval(2, 2, 18, 18, fill="#00b894", outline="")
             else:
-                # Orange si pas encore implémenté
-                self.api_indicator.create_oval(2, 2, 18, 18, fill="#fdcb6e", outline="")
+                # Rouge si déconnecté
+                self.api_indicator.create_oval(2, 2, 18, 18, fill="#e17055", outline="")
         
         # Répéter toutes les 5 secondes
         self.after(5000, self.update_connection_status)

@@ -93,6 +93,6 @@ if __name__ == "__main__":
     
     print(f"🚀 Application lancée en {screen_width}x{screen_height}")
     print("💡 Codes de test: Casier 1 = 1234, Casier 2 = 5678")
-    print("🎭 Affichage mock: Casier 1 réservé, Casier 2 libre")
+    print("🔗 API Solary connectée et synchronisation automatique activée")
     
     root.mainloop()

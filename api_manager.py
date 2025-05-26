@@ -1,6 +1,5 @@
 """
-Gestionnaire API pour la communication avec le backend
-Prêt pour l'intégration future
+Gestionnaire API pour la communication avec le backend Solary
 """
 
 import requests
@@ -11,10 +10,10 @@ from datetime import datetime
 
 class APIManager:
     def __init__(self, base_url=None, api_key=None):
-        # Configuration API (à définir plus tard)
-        self.base_url = base_url or "https://api.solary.example.com"
+        # Configuration API Solary
+        self.base_url = base_url or "https://solary.vabre.ch"
         self.api_key = api_key
-        self.borne_id = "borne1"
+        self.borne_id = 1  # ID de cette borne
         
         # Headers par défaut
         self.headers = {
@@ -36,7 +35,12 @@ class APIManager:
         self.sync_thread = None
         self.sync_running = False
         
-        print("🔗 APIManager initialisé (mode préparation)")
+        # Cache des données API
+        self.prises_data = []
+        
+        print("🔗 APIManager initialisé avec API Solary")
+        print(f"   Base URL: {self.base_url}")
+        print(f"   Borne ID: {self.borne_id}")
     
     def set_status_change_callback(self, callback):
         """Définit le callback pour les changements d'état"""
@@ -67,80 +71,113 @@ class APIManager:
                 print(f"❌ Erreur sync API: {e}")
                 time.sleep(interval)
     
-    # Méthodes API (à implémenter plus tard)
-    
     def get_lockers_status(self):
-        """Récupère l'état des casiers depuis l'API"""
+        """Récupère l'état des casiers depuis l'API Solary"""
         try:
-            # TODO: Implémenter l'appel API réel
-            # response = requests.get(f"{self.base_url}/bornes/{self.borne_id}/casiers", headers=self.headers)
-            # if response.status_code == 200:
-            #     data = response.json()
-            #     return [casier['available'] for casier in data['casiers']]
+            url = f"{self.base_url}/GetAllPrises"
+            print(f"🔄 Appel API: {url}")
             
-            # Pour l'instant, retourner None (mode mock)
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Données API reçues: {data}")
+                
+                # Filtrer les prises de cette borne
+                borne_prises = [prise for prise in data if prise.get('borne_id') == self.borne_id]
+                
+                # Trier par prise_id pour avoir l'ordre correct
+                borne_prises.sort(key=lambda x: x.get('prise_id', 0))
+                
+                # Sauvegarder les données complètes
+                self.prises_data = borne_prises
+                
+                # Convertir en format attendu par le système (True = disponible, False = occupé)
+                status_list = []
+                for prise in borne_prises:
+                    is_available = bool(prise.get('is_available', 0))
+                    status_list.append(is_available)
+                
+                print(f"📊 Statuts casiers: {status_list}")
+                self.connected = True
+                self.last_sync = datetime.now()
+                
+                return status_list
+            else:
+                print(f"❌ Erreur API: {response.status_code} - {response.text}")
+                self.connected = False
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Erreur réseau API: {e}")
+            self.connected = False
             return None
-            
         except Exception as e:
             print(f"❌ Erreur récupération statut API: {e}")
+            self.connected = False
             return None
     
-    def reserve_locker(self, locker_id, user_data=None):
-        """Réserve un casier via l'API"""
+    def update_prise_status(self, locker_id, is_available):
+        """Met à jour le statut d'une prise via l'API"""
         try:
-            # TODO: Implémenter l'appel API réel
-            # payload = {
-            #     "casier_id": locker_id,
-            #     "action": "reserve",
-            #     "timestamp": datetime.now().isoformat(),
-            #     "user_data": user_data
-            # }
-            # response = requests.post(f"{self.base_url}/bornes/{self.borne_id}/casiers/{locker_id}/reserve", 
-            #                         json=payload, headers=self.headers)
-            # return response.status_code == 200
-            
-            print(f"🔗 API: Réservation casier {locker_id + 1} (mock)")
-            return True
-            
+            # Trouver la prise correspondante
+            if locker_id < len(self.prises_data):
+                prise = self.prises_data[locker_id]
+                prise_id = prise.get('prise_id')
+                
+                if not prise_id:
+                    print(f"❌ Prise ID non trouvé pour casier {locker_id}")
+                    return False
+                
+                url = f"{self.base_url}/UpdatePrise/{prise_id}"
+                
+                payload = {
+                    "id": prise_id,
+                    "borne_id": self.borne_id,
+                    "is_available": 1 if is_available else 0
+                }
+                
+                print(f"🔄 Mise à jour prise {prise_id}: {payload}")
+                
+                response = requests.put(url, json=payload, headers=self.headers, timeout=10)
+                
+                if response.status_code in [200, 204]:
+                    print(f"✅ Prise {prise_id} mise à jour avec succès")
+                    
+                    # Mettre à jour le cache local
+                    self.prises_data[locker_id]['is_available'] = 1 if is_available else 0
+                    
+                    return True
+                else:
+                    print(f"❌ Erreur mise à jour prise: {response.status_code} - {response.text}")
+                    return False
+            else:
+                print(f"❌ Casier {locker_id} non trouvé dans les données")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Erreur réseau mise à jour: {e}")
+            return False
         except Exception as e:
-            print(f"❌ Erreur réservation API: {e}")
+            print(f"❌ Erreur mise à jour prise: {e}")
             return False
     
+    def reserve_locker(self, locker_id, user_data=None):
+        """Réserve un casier (le marque comme occupé)"""
+        print(f"🔗 API: Réservation casier {locker_id + 1}")
+        return self.update_prise_status(locker_id, False)  # False = occupé
+    
     def release_locker(self, locker_id, unlock_code=None):
-        """Libère un casier via l'API"""
-        try:
-            # TODO: Implémenter l'appel API réel
-            # payload = {
-            #     "casier_id": locker_id,
-            #     "action": "release",
-            #     "timestamp": datetime.now().isoformat(),
-            #     "unlock_code": unlock_code
-            # }
-            # response = requests.post(f"{self.base_url}/bornes/{self.borne_id}/casiers/{locker_id}/release", 
-            #                         json=payload, headers=self.headers)
-            # return response.status_code == 200
-            
-            print(f"🔗 API: Libération casier {locker_id + 1} (mock)")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur libération API: {e}")
-            return False
+        """Libère un casier (le marque comme disponible)"""
+        print(f"🔗 API: Libération casier {locker_id + 1}")
+        return self.update_prise_status(locker_id, True)  # True = disponible
     
     def send_heartbeat(self):
         """Envoie un heartbeat à l'API"""
         try:
-            # TODO: Implémenter l'appel API réel
-            # payload = {
-            #     "borne_id": self.borne_id,
-            #     "timestamp": datetime.now().isoformat(),
-            #     "status": "online"
-            # }
-            # response = requests.post(f"{self.base_url}/bornes/{self.borne_id}/heartbeat", 
-            #                         json=payload, headers=self.headers)
-            # self.connected = response.status_code == 200
-            
-            self.connected = True  # Mock
+            # Pour l'instant, utiliser GetAllPrises comme heartbeat
+            result = self.get_lockers_status()
+            self.connected = result is not None
             return self.connected
             
         except Exception as e:
@@ -155,44 +192,34 @@ class APIManager:
             if status and self.on_status_change_callback:
                 self.on_status_change_callback(status)
             
-            self.last_sync = datetime.now()
             return True
             
         except Exception as e:
             print(f"❌ Erreur synchronisation: {e}")
             return False
     
-    def get_unlock_code(self, locker_id, user_token=None):
-        """Récupère le code de déverrouillage depuis l'API"""
-        try:
-            # TODO: Implémenter l'appel API réel
-            # response = requests.get(f"{self.base_url}/bornes/{self.borne_id}/casiers/{locker_id}/code", 
-            #                        headers=self.headers, params={"token": user_token})
-            # if response.status_code == 200:
-            #     return response.json().get("code")
-            
-            # Pour l'instant, retourner None (utiliser les codes locaux)
-            return None
-            
-        except Exception as e:
-            print(f"❌ Erreur récupération code API: {e}")
-            return None
+    def get_prise_info(self, locker_id):
+        """Récupère les informations d'une prise"""
+        if locker_id < len(self.prises_data):
+            return self.prises_data[locker_id]
+        return None
     
     def log_action(self, locker_id, action, details=None):
-        """Enregistre une action dans l'API"""
+        """Enregistre une action (pour l'instant juste un log local)"""
         try:
-            # TODO: Implémenter l'appel API réel
-            # payload = {
-            #     "borne_id": self.borne_id,
-            #     "casier_id": locker_id,
-            #     "action": action,
-            #     "timestamp": datetime.now().isoformat(),
-            #     "details": details
-            # }
-            # response = requests.post(f"{self.base_url}/logs", json=payload, headers=self.headers)
-            # return response.status_code == 200
+            prise_info = self.get_prise_info(locker_id)
+            prise_id = prise_info.get('prise_id') if prise_info else 'unknown'
             
-            print(f"📝 API Log: Casier {locker_id + 1} - {action}")
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "borne_id": self.borne_id,
+                "prise_id": prise_id,
+                "locker_id": locker_id,
+                "action": action,
+                "details": details
+            }
+            
+            print(f"📝 API Log: {log_entry}")
             return True
             
         except Exception as e:
@@ -206,3 +233,18 @@ class APIManager:
     def get_last_sync(self):
         """Retourne la dernière synchronisation"""
         return self.last_sync
+    
+    def get_borne_id(self):
+        """Retourne l'ID de la borne"""
+        return self.borne_id
+    
+    def test_connection(self):
+        """Test la connexion à l'API"""
+        print("🧪 Test de connexion API...")
+        result = self.get_lockers_status()
+        if result is not None:
+            print("✅ Connexion API OK")
+            return True
+        else:
+            print("❌ Connexion API échouée")
+            return False
