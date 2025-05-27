@@ -174,32 +174,32 @@ class APIManager:
                 
                 # Gestion intelligente selon le statut
                 if new_status.lower() == 'libre':
-                    # Alternative: ne pas envoyer user_id quand on veut null
+                    # Libre: tout remettre à null
                     payload = {
                         "borne_id": casier.get('borne_id', self.borne_id),
+                        "user_id": None,  # ← Vraiment None/NULL
                         "status": new_status,
                         "date_reservation": None,
                         "date_occupation": None
                     }
-                    # Ne pas inclure user_id du tout
-                    print(f"🔄 Libération complète casier {casier_id}: user_id omis")
+                    print(f"🔄 Libération complète casier {casier_id}: user_id → NULL")
                     
                 elif new_status.lower() == 'occupe':
-                    # Occupé: user_id à 0 pour sécurité
+                    # Occupé: GARDER le user_id existant (celui qui a réservé)
                     payload = {
                         "borne_id": casier.get('borne_id', self.borne_id),
-                        "user_id": "",  # Essayer 0 au lieu de None
+                        "user_id": casier.get('user_id'),  # ← GARDER l'user_id existant
                         "status": new_status,
                         "date_reservation": casier.get('date_reservation'),
                         "date_occupation": datetime.now().isoformat()
                     }
-                    print(f"🔄 Occupation casier {casier_id}: user_id → 0 (sécurité)")
+                    print(f"🔄 Occupation casier {casier_id}: user_id conservé = {casier.get('user_id')}")
                     
                 elif new_status.lower() == 'reserve':
                     # Réservé: garde user_id existant (mais pas None)
                     current_user_id = casier.get('user_id')
                     if current_user_id is None:
-                        current_user_id = ""  # Fallback si None
+                        current_user_id = 0  # Fallback si None
                     
                     payload = {
                         "borne_id": casier.get('borne_id', self.borne_id),
@@ -214,7 +214,7 @@ class APIManager:
                     # Statut inconnu: garde tout tel quel (mais pas None pour user_id)
                     current_user_id = casier.get('user_id')
                     if current_user_id is None:
-                        current_user_id = ""  # Fallback si None
+                        current_user_id = 0  # Fallback si None
                         
                     payload = {
                         "borne_id": casier.get('borne_id', self.borne_id),
@@ -234,11 +234,11 @@ class APIManager:
                     
                     # Mettre à jour le cache local
                     self.casiers_data[locker_id]['status'] = new_status
-                    if new_status.lower() in ['libre', 'occupe']:
-                        self.casiers_data[locker_id]['user_id'] = ""  # 0 au lieu de None
                     if new_status.lower() == 'libre':
+                        self.casiers_data[locker_id]['user_id'] = None  # Seulement pour libre
                         self.casiers_data[locker_id]['date_reservation'] = None
                         self.casiers_data[locker_id]['date_occupation'] = None
+                    # Pour 'occupe', on garde l'user_id existant
                     
                     return True
                 else:
@@ -267,7 +267,12 @@ class APIManager:
     def occupy_locker(self, locker_id):
         """Marque un casier comme occupé (user_id → null pour sécurité)"""
         print(f"🔗 API: Occupation casier {locker_id + 1}")
-        return self.update_status(locker_id, "occupe")
+        result = self.update_status(locker_id, "occupe")
+        if result:
+            print(f"✅ API: Casier {locker_id + 1} passé en OCCUPÉ avec succès")
+        else:
+            print(f"❌ API: Échec passage en OCCUPÉ pour casier {locker_id + 1}")
+        return result
     
     def release_locker(self, locker_id, unlock_code=None):
         """Libère un casier (le marque comme libre, user_id → null)"""

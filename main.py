@@ -92,7 +92,6 @@ if __name__ == "__main__":
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     
     print(f"🚀 Application lancée en {screen_width}x{screen_height}")
-    print("💡 Codes de test: Casier 1 = 1234, Casier 2 = 5678")
     print("🔗 API Solary connectée et synchronisation automatique activée")
     
     root.mainloop()

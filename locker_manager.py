@@ -8,8 +8,8 @@ class LockerManager:
         
         # Codes de déverrouillage fallback
         self.fallback_codes = {
-            0: "9785578678",  # Casier 1
-            1: "9785578678"   # Casier 2
+            0: "1234",  # Casier 1
+            1: "5678"   # Casier 2
         }
         
         # Gestionnaires
@@ -89,17 +89,26 @@ class LockerManager:
         """Marque un casier comme occupé (transition réservé -> occupé)"""
         if 0 <= locker_id < len(self.lockers_display):
             print(f"🏠 Casier {locker_id + 1} marqué comme occupé")
-            
+        
             # Mettre à jour via l'API
             if self.api_manager:
                 success = self.api_manager.occupy_locker(locker_id)
                 if success:
                     print(f"✅ Occupation API confirmée pour casier {locker_id + 1}")
+                
+                    # Forcer une synchronisation immédiate pour récupérer le nouveau statut
+                    print(f"🔄 Synchronisation forcée après occupation...")
+                    sync_success = self.sync_with_api()
+                    if sync_success:
+                        print(f"✅ Synchronisation réussie après occupation")
+                    else:
+                        print(f"⚠️ Synchronisation échouée après occupation")
+                
                     return True
                 else:
                     print(f"⚠️ Échec occupation API pour casier {locker_id + 1}")
                     return False
-            
+        
             return True
         return False
     
@@ -144,10 +153,20 @@ class LockerManager:
                 # Gérer la transition d'état selon le statut actuel
                 if detailed_status == 'reserve':
                     # Réservé -> Occupé
-                    self.occupy_locker(locker_id)
+                    print(f"🔄 Transition: Réservé → Occupé pour casier {locker_id + 1}")
+                    success = self.occupy_locker(locker_id)
+                    if success:
+                        print(f"✅ Casier {locker_id + 1} maintenant OCCUPÉ")
+                    else:
+                        print(f"❌ Échec transition vers OCCUPÉ pour casier {locker_id + 1}")
                 elif detailed_status == 'occupe':
                     # Occupé -> Libre (libération)
-                    self.release_locker(locker_id)
+                    print(f"🔄 Transition: Occupé → Libre pour casier {locker_id + 1}")
+                    success = self.release_locker(locker_id)
+                    if success:
+                        print(f"✅ Casier {locker_id + 1} maintenant LIBRE")
+                    else:
+                        print(f"❌ Échec transition vers LIBRE pour casier {locker_id + 1}")
                 
             else:
                 print(f"❌ Code incorrect pour casier {locker_id + 1}")
