@@ -409,6 +409,26 @@ class SolaryApp(tk.Frame):
         """Crée la vue de saisie de code avec clavier virtuel tactile"""
         self.code_entry_view = tk.Frame(self.main_container, bg=self.bg_color)
         
+        # Bouton retour discret en haut à droite
+        back_button_frame = tk.Frame(self.code_entry_view, bg=self.bg_color)
+        back_button_frame.pack(anchor=tk.NE, padx=self.padding, pady=self.padding//2)
+
+        back_button = tk.Button(
+            back_button_frame,
+            text="✕",  # Croix simple
+            font=("Helvetica", self.base_font_size + 2, "bold"),
+            bg="#95a5a6",  # Gris discret
+            fg="white",
+            activebackground="#7f8c8d",
+            activeforeground="white",
+            bd=0,
+            width=3,
+            height=1,
+            cursor="hand2",
+            command=lambda: self.show_view("main")
+        )
+        back_button.pack()
+        
         # Conteneur principal centré
         main_frame = tk.Frame(self.code_entry_view, bg="white", padx=self.padding*2, pady=self.padding*2)
         main_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
@@ -600,19 +620,21 @@ class SolaryApp(tk.Frame):
         validate_btn.bind("<Enter>", on_enter_validate)
         validate_btn.bind("<Leave>", on_leave_validate)
         
-        # Bouton Annuler
+        # Bouton Annuler discret
         cancel_frame = tk.Frame(main_frame, bg="white")
         cancel_frame.pack(pady=self.padding)
         
         cancel_btn = tk.Button(
             cancel_frame,
             text="Annuler",
-            font=("Helvetica", self.button_font_size),
-            bg="#dfe6e9",
-            fg="#2d3436",
+            font=("Helvetica", self.base_font_size),
+            bg="#bdc3c7",  # Gris plus discret
+            fg="#2c3e50",
+            activebackground="#95a5a6",
+            activeforeground="#2c3e50",
             bd=0,
             padx=self.button_padding_x,
-            pady=self.button_padding_y,
+            pady=self.button_padding_y//2,
             cursor="hand2",
             command=lambda: self.show_view("main")
         )
@@ -821,6 +843,10 @@ class SolaryApp(tk.Frame):
     
     def show_view(self, view_name):
         """Affiche la vue spécifiée"""
+        # Annuler le timeout si on quitte la vue code_entry
+        if self.current_view == "code_entry" and view_name != "code_entry":
+            self.cancel_code_timeout()
+        
         self.current_view = view_name
         
         for view in [self.main_view, self.code_entry_view, self.notification_view, self.qr_code_view]:
@@ -833,6 +859,19 @@ class SolaryApp(tk.Frame):
             self.code_entry_view.pack(fill=tk.BOTH, expand=True)
             self.entered_code = ""  # Réinitialiser le code
             self.update_code_display()
+            
+            # Timeout automatique après 60 secondes d'inactivité
+            if hasattr(self, 'code_timeout_timer'):
+                self.code_timeout_timer.cancel()
+            
+            def auto_return_to_main():
+                if self.current_view == "code_entry":
+                    print("⏰ Timeout: retour automatique au menu principal")
+                    self.show_view("main")
+            
+            import threading
+            self.code_timeout_timer = threading.Timer(60.0, auto_return_to_main)
+            self.code_timeout_timer.start()
         elif view_name == "notification":
             self.notification_view.pack(fill=tk.BOTH, expand=True)
             self.update_notification()
@@ -996,6 +1035,9 @@ class SolaryApp(tk.Frame):
 
     def on_closing(self):
         """Méthode appelée à la fermeture de l'application"""
+        # Annuler le timer de timeout
+        self.cancel_code_timeout()
+        
         if self.locker_manager:
             self.locker_manager.cleanup()
         if self.mqtt_manager:
@@ -1003,3 +1045,8 @@ class SolaryApp(tk.Frame):
         if self.api_manager:
             self.api_manager.stop_sync()
         self.master.destroy()
+
+    def cancel_code_timeout(self):
+        """Annule le timer de timeout pour la saisie de code"""
+        if hasattr(self, 'code_timeout_timer'):
+            self.code_timeout_timer.cancel()

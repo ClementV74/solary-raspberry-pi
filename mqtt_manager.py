@@ -54,16 +54,15 @@ class MQTTManager:
     def start_connection(self):
         """Démarre la connexion MQTT dans un thread séparé"""
         def connect_loop():
-            try:
-                print(f"🔄 Connexion au broker MQTT {self.mqtt_server}:{self.mqtt_port}...")
-                self.client.connect(self.mqtt_server, self.mqtt_port, 60)
-                self.client.loop_forever()
-            except Exception as e:
-                print(f"❌ Erreur connexion MQTT: {e}")
-                self.connected = False
-                time.sleep(5)
-                self.reconnect()
-        
+            while True:
+                try:
+                    print(f"🔄 Connexion au broker MQTT {self.mqtt_server}:{self.mqtt_port}...")
+                    self.client.connect(self.mqtt_server, self.mqtt_port, 60)
+                    self.client.loop_forever()
+                except Exception as e:
+                    print(f"❌ Erreur connexion MQTT: {e}")
+                    self.connected = False
+                    time.sleep(5)  # Attente avant tentative reconnexion
         self.connection_thread = threading.Thread(target=connect_loop, daemon=True)
         self.connection_thread.start()
     
@@ -78,16 +77,16 @@ class MQTTManager:
                 self.start_connection()
     
     def open_locker(self, casier_id):
-        """Ouvre un casier (active le relais)"""
+        """Ouvre un casier (désactive le relais)"""
+        # MQTT doit recevoir "0" pour OUVRIR
         if not self.connected:
             print("⚠️ MQTT non connecté. Simulation ouverture casier.")
             return False
-        
+
         topic = self.casier1_topic if casier_id == 0 else self.casier2_topic
-        
+
         try:
-            # Envoyer commande d'ouverture (1)
-            result = self.client.publish(topic, "1", qos=1)
+            result = self.client.publish(topic, "0", qos=1)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 print(f"🔓 Commande ouverture envoyée: Casier {casier_id + 1}")
                 return True
@@ -99,16 +98,16 @@ class MQTTManager:
             return False
     
     def close_locker(self, casier_id):
-        """Ferme un casier (désactive le relais)"""
+        """Ferme un casier (active le relais)"""
+        # MQTT doit recevoir "1" pour FERMER
         if not self.connected:
             print("⚠️ MQTT non connecté. Simulation fermeture casier.")
             return False
-        
+
         topic = self.casier1_topic if casier_id == 0 else self.casier2_topic
-        
+
         try:
-            # Envoyer commande de fermeture (0)
-            result = self.client.publish(topic, "0", qos=1)
+            result = self.client.publish(topic, "1", qos=1)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 print(f"🔒 Commande fermeture envoyée: Casier {casier_id + 1}")
                 return True

@@ -109,7 +109,7 @@ def generate_qr_code():
     if not os.path.exists("assets"):
         os.makedirs("assets")
     
-    default_url = "https://dashboard.vabre.ch/"
+    default_url = "https://reservation.vabre.ch/"
     url = input(f"URL pour le QR code (Entrée = {default_url}): ") or default_url
     
     try:

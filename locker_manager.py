@@ -194,7 +194,9 @@ class LockerManager:
         def auto_close():
             print(f"⏰ Auto-fermeture casier {locker_id + 1} après 20 secondes")
             if self.mqtt_manager:
+                print(f"📡 Envoi commande MQTT fermeture casier {locker_id + 1}")
                 self.mqtt_manager.close_locker(locker_id)
+
         
         self.timers[locker_id] = threading.Timer(20.0, auto_close)
         self.timers[locker_id].start()
